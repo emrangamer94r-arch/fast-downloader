@@ -30,7 +30,7 @@ HTML_TEMPLATE = """
 
 <div class="container">
     <h1>⚡ Fast Video Downloader</h1>
-    <p>ফেসবুক, ইউটিউব, টিকটক বা ইনস্টাগ্রাম ভিডিওর লিংক নিচে পেস্ট করুন</p>
+    <p>ফেসবুক, ইউটিউব, টিকток বা ইনস্টাগ্রাম ভিডিওর লিংক নিচে পেস্ট করুন</p>
     
     <input type="text" id="videoUrl" placeholder="এখানে ভিডিওর লিংক দিন...">
     <br>
@@ -70,7 +70,7 @@ function getDownloadLink() {
     .then(data => {
         if(data.success) {
             videoTitle.innerHTML = "🎬 <b>Title:</b> " + data.title;
-            linksContainer.innerHTML = `<a href="${data.download_url}" class="download-btn" target="_blank" download>📥 ক্লিক করে ভিডিও ডাউনলোড করুন</a>`;
+            linksContainer.innerHTML = `<a href="${data.download_url}" class="download-btn" target="_blank">📥 ক্লিক করে ভিডিও ডাউনলোড করুন</a>`;
         } else {
             linksContainer.innerHTML = '<span style="color: #ef4444;">❌ এরর: লিংকটি সাপোর্ট করছে না বা সমস্যা হয়েছে!</span>';
         }
@@ -88,8 +88,7 @@ function getDownloadLink() {
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-@app.route('/download', \
-methods=['POST'])
+@app.route('/download', methods=['POST'])
 def download():
     data = request.get_json()
     video_url = data.get('url')
@@ -98,22 +97,39 @@ def download():
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': False,
+        'nocheckcertificate': True,
+        'ignoreerrors': True,
+        'no_color': True,
+        'youtube_include_dash_manifest': False,
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate'
         }
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
+            if not info:
+                return jsonify({'success': False})
+                
             video_title = info.get('title', 'Social Media Video')
             
-            # ডিরেক্ট ইউআরএল বা ফরম্যাট লিস্ট থেকে সেরাটা নেওয়া
-            direct_url = info.get('url') or (info.get('formats')[0].get('url') if info.get('formats') else None)
-            
+            # নিখুঁত ইউআরএল এক্সট্রাকশন লজিক
+            direct_url = None
+            if 'url' in info:
+                direct_url = info['url']
+            elif 'formats' in info and len(info['formats']) > 0:
+                # সব ফরম্যাটের মধ্যে সবচেয়ে সেরা ডিরেক্ট ইউআরএল ফিল্টার করা
+                for f in reversed(info['formats']):
+                    if f.get('url') and (f.get('vcodec') != 'none' or f.get('acodec') != 'none'):
+                        direct_url = f['url']
+                        break
+                if not direct_url:
+                    direct_url = info['formats'][0].get('url')
+
             if direct_url:
                 return jsonify({'success': True, 'title': video_title, 'download_url': direct_url})
             

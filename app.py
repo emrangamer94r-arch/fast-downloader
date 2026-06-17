@@ -3,49 +3,42 @@ import yt_dlp
 
 app = Flask(__name__)
 
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Fast Downloader</title>
-    <style>
-        body { background: #0f172a; color: white; text-align: center; padding: 50px; font-family: sans-serif; }
-        input { padding: 10px; width: 80%; border-radius: 5px; border: none; }
-        button { padding: 10px 20px; background: #0284c7; color: white; border: none; cursor: pointer; border-radius: 5px; margin-top: 10px; }
-        .download-btn { display: block; margin: 20px auto; padding: 10px 20px; background: #22c55e; color: white; text-decoration: none; width: 200px; border-radius: 5px; }
-    </style>
-</head>
-<body>
-    <h1>⚡ Fast Video Downloader</h1>
-    <input type="text" id="url" placeholder="ভিডিও লিংক দিন...">
-    <br><button onclick="download()">লিংক তৈরি করুন</button>
-    <div id="result"></div>
+@app.route('/')
+def home():
+    return render_template_string('''
+    <body style="background:#000; color:#fff; text-align:center; padding:50px;">
+    <h1>Video Downloader</h1>
+    <input type="text" id="u" style="width:80%; padding:10px;">
+    <button onclick="d()" style="padding:10px;">Get Link</button>
+    <div id="r"></div>
     <script>
-    function download() {
-        let url = document.getElementById('url').value;
-        fetch('/download', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: url})})
-        .then(res => res.json()).then(data => {
-            if(data.url) document.getElementById('result').innerHTML = `<a href="${data.url}" class="download-btn" target="_blank">📥 ডাউনলোড করুন</a>`;
-            else alert('লিংক কাজ করছে না!');
+    function d(){
+        let url = document.getElementById('u').value;
+        fetch('/dl', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url:url})})
+        .then(res=>res.json()).then(data=>{
+            if(data.url) document.getElementById('r').innerHTML = '<a href="'+data.url+'" style="color:lime;">Download Now</a>';
+            else alert('Error: Please try another video or check link.');
         });
     }
     </script>
-</body>
-</html>
-"""
+    </body>
+    ''')
 
-@app.route('/')
-def home(): return render_template_string(HTML_TEMPLATE)
-
-@app.route('/download', methods=['POST'])
-def download():
+@app.route('/dl', methods=['POST'])
+def dl():
     url = request.get_json().get('url')
     try:
-        ydl_opts = {'format': 'best', 'quiet': True}
+        # এখানে আমরা হেডার এবং বাইপাস সেটিংস যুক্ত করছি
+        ydl_opts = {
+            'format': 'best',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'geo_bypass': True,
+            'quiet': True
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             return jsonify({'url': info.get('url')})
-    except: return jsonify({'success': False})
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 if __name__ == '__main__': app.run(host='0.0.0.0', port=5000)

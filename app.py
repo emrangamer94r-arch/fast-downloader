@@ -35,14 +35,13 @@ HTML_TEMPLATE = """
     <input type="text" id="videoUrl" placeholder="এখানে ভিডিওর লিংক দিন...">
     <br>
     <button onclick="getDownloadLink()">ভিডিও লিংক তৈরি করুন</button>
-
+    
     <div id="result">
         <p style="color: #22c55e; font-weight: bold;">আপনার ভিডিও ডাউনলোডের জন্য রেডি! 👇</p>
         <p id="videoTitle" style="font-size: 14px; color: #cbd5e1;"></p>
         <div id="linksContainer"></div>
     </div>
-
-    <!-- টেলিগ্রাম মেম্বার বাড়ানোর ব্যানার -->
+    
     <div class="tg-banner">
         📢 আমাদের অফিশিয়াল টেলিগ্রাম চ্যানেলে জয়েন করুন! <br>
         <a href="https://t.me/bd_trading_king_official" target="_blank">এখানে ক্লিক করে জয়েন করুন</a>
@@ -59,9 +58,9 @@ function getDownloadLink() {
     var videoTitle = document.getElementById('videoTitle');
     
     resultDiv.style.display = 'block';
-    linksContainer.innerHTML = 'প্রসেসিং হচ্ছে, একটু অপেক্ষা করুন...⏳';
+    linksContainer.innerHTML = 'প্রসেসিং হচ্ছে, একটু অপেক্ষা করুন... ⏳';
     videoTitle.innerHTML = '';
-
+    
     fetch('/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,17 +70,16 @@ function getDownloadLink() {
     .then(data => {
         if(data.success) {
             videoTitle.innerHTML = "🎬 <b>Title:</b> " + data.title;
-            linksContainer.innerHTML = `<a href="${data.download_url}" class="download-btn" target="_blank" download>⬇️ ক্লিক করে ভিডিও ডাউনলোড করুন</a>`;
+            linksContainer.innerHTML = `<a href="${data.download_url}" class="download-btn" target="_blank" download>📥 ক্লিক করে ভিডিও ডাউনলোড করুন</a>`;
         } else {
-            linksContainer.innerHTML = `<span style="color: #ef4444;">❌ এরর: লিংকটি সাপোর্ট করছে না বা সমস্যা হয়েছে!</span>`;
+            linksContainer.innerHTML = '<span style="color: #ef4444;">❌ এরর: লিংকটি সাপোর্ট করছে না বা সমস্যা হয়েছে!</span>';
         }
     })
     .catch(err => {
-        linksContainer.innerHTML = `<span style="color: #ef4444;">❌ কানেকশন এরর হয়েছে!</span>`;
+        linksContainer.innerHTML = '<span style="color: #ef4444;">❌ কানেকশন এরর হয়েছে!</span>';
     });
 }
 </script>
-
 </body>
 </html>
 """
@@ -90,7 +88,8 @@ function getDownloadLink() {
 def home():
     return render_template_string(HTML_TEMPLATE)
 
-@app.route('/download', methods=['POST'])
+@app.route('/download', \
+methods=['POST'])
 def download():
     data = request.get_json()
     video_url = data.get('url')
@@ -99,21 +98,30 @@ def download():
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
+        'extract_flat': False,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_url, download=False)
             video_title = info.get('title', 'Social Media Video')
-            direct_url = info.get('url')
+            
+            # ডিরেক্ট ইউআরএল বা ফরম্যাট লিস্ট থেকে সেরাটা নেওয়া
+            direct_url = info.get('url') or (info.get('formats')[0].get('url') if info.get('formats') else None)
             
             if direct_url:
                 return jsonify({'success': True, 'title': video_title, 'download_url': direct_url})
             
+            return jsonify({'success': False})
+            
     except Exception as e:
         print(f"Error: {e}")
-        
-    return jsonify({'success': False})
+        return jsonify({'success': False})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

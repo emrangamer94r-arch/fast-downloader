@@ -1,9 +1,9 @@
 from flask import Flask, render_template_string, request, jsonify
+import requests
 import yt_dlp
 
 app = Flask(__name__)
 
-# ওয়েবসাইটের ডিজাইন (HTML/CSS)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -70,7 +70,7 @@ function getDownloadLink() {
     .then(data => {
         if(data.success) {
             videoTitle.innerHTML = "🎬 <b>Title:</b> " + data.title;
-            linksContainer.innerHTML = `<a href="${data.download_url}" class="download-btn" target="_blank">📥 ক্লিক করে ভিডিও ডাউনলোড করুন</a>`;
+            linksContainer.innerHTML = `<a href="${data.download_url}" class="download-btn" target="_blank" rel="noreferrer">📥 ক্লিক করে ভিডিও ডাউনলোড করুন</a>`;
         } else {
             linksContainer.innerHTML = '<span style="color: #ef4444;">❌ এরর: লিংকটি সাপোর্ট করছে না বা সমস্যা হয়েছে!</span>';
         }
@@ -84,6 +84,20 @@ function getDownloadLink() {
 </html>
 """
 
+def get_youtube_id(url):
+    import re
+    patterns = [
+        r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
+        r'(?:shorts\/)([0-9A-Za-z_-]{11}).*',
+        r'(?:embed\/)([0-9A-Za-z_-]{11}).*',
+        r'(?:youtu\.be\/)([0-9A-Za-z_-]{11}).*'
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
 @app.route('/')
 def home():
     return render_template_string(HTML_TEMPLATE)
@@ -91,22 +105,36 @@ def home():
 @app.route('/download', methods=['POST'])
 def download():
     data = request.get_json()
-    video_url = data.get('url')
+    video_url = data.get('url', '')
     
+    # ইউটিউব বা শর্টস লিংক হলে ইনভিডিয়াস এপিআই বাইপাস মেথড
+    if 'youtube.com' in video_url or 'youtu.be' in video_url:
+        video_id = get_youtube_id(video_url)
+        if video_id:
+            # পাবলিক ইনভিডিয়াস ইনস্ট্যান্স ব্যবহার করে রেস্ট্রিকশন বাইপাস
+            api_url = f"https://invidious.nerdvpn.de/api/v1/videos/{video_id}"
+            try:
+                response = requests.get(api_url, timeout=10)
+                if response.status_code == 200:
+                    json_data = response.json()
+                    title = json_data.get('title', 'YouTube Video')
+                    format_streams = json_data.get('formatStreams', [])
+                    
+                    if format_streams:
+                        # সবচেয়ে ভালো কোয়ালিটির ডিরেক্ট লিংক নেওয়া
+                        direct_url = format_streams[-1].get('url')
+                        if direct_url:
+                            return jsonify({'success': True, 'title': title, 'download_url': direct_url})
+            except Exception as e:
+                print(f"Invidious API Error: {e}")
+
+    # ফেসবুক, টিকটক বা অন্যান্য সাইটের জন্য নরমাল মেথড
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'ignoreerrors': True,
-        'no_color': True,
-        'youtube_include_dash_manifest': False,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Sec-Fetch-Mode': 'navigate'
-        }
+        'ignoreerrors': True
     }
     
     try:
@@ -116,13 +144,9 @@ def download():
                 return jsonify({'success': False})
                 
             video_title = info.get('title', 'Social Media Video')
+            direct_url = info.get('url')
             
-            # নিখুঁত ইউআরএল এক্সট্রাকশন লজিক
-            direct_url = None
-            if 'url' in info:
-                direct_url = info['url']
-            elif 'formats' in info and len(info['formats']) > 0:
-                # সব ফরম্যাটের মধ্যে সবচেয়ে সেরা ডিরেক্ট ইউআরএল ফিল্টার করা
+            if not direct_url and 'formats' in info:
                 for f in reversed(info['formats']):
                     if f.get('url') and (f.get('vcodec') != 'none' or f.get('acodec') != 'none'):
                         direct_url = f['url']
@@ -132,7 +156,6 @@ def download():
 
             if direct_url:
                 return jsonify({'success': True, 'title': video_title, 'download_url': direct_url})
-            
             return jsonify({'success': False})
             
     except Exception as e:
